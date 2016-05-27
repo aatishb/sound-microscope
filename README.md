@@ -1,5 +1,5 @@
 # sound-microscope
 
-[spectrogram](https://gitcdn.xyz/repo/aatishb/sound-microscope/master/spectrogram/index.html)
+[spectrogram](https://aatishb.github.io/sound-microscope/spectrogram/)
 
-[peakfinder](https://gitcdn.xyz/repo/aatishb/sound-microscope/master/peakfinder/index.html)
+[peakfinder](https://aatishb.github.io/sound-microscope/peakfinder/)
