@@ -5,15 +5,16 @@
  * <a href="http://p5js.org/reference/#/libraries/p5.sound">p5.sound library</a>
  * and a running <a href="https://github.com/processing/p5.js/wiki/Local-server">local server</a>.</span></em></p>
  */
- 
- var cutoff = 15;         // a filter on peak detection, smaller = more peaks, bigger = fewer 
+
+var cutoff = 2;          // a filter on peak detection, smaller = more peaks, bigger = fewer
 var numFreqs = 20;       // number of peak frequencies to store (after sorting by amplitude)
 var speed = 2;           // sideways scroll speed
-var zoom = 5;            // e.g. if 5, we display the bottom fifth of frequencies
-var energyThreshold = 0; // can add an optional cutoff on energy (filter out background noise)
+var zoom = 1;            // e.g. if 5, we display the bottom fifth of frequencies
+var minDecibel = -100;   // cutoff on minimum decibel level
+var maxDecibel = -30;    // cutoff on maximum decibel level
 
 var mic, fft;
-var repeat = true;
+var recording = true;
 
 function setup() {
    createCanvas(800,600);
@@ -28,29 +29,31 @@ function setup() {
 var nyquist = 22050;
 var samples = []; // array of peak arrays
 var playbackIndex = 0;
+var currentFrame = 0;
 
 function draw()
 {
 
   // press any key to pause the output
-  if(repeat){
+  if(recording){
 
-    // reset screen when data fills the screen    
-    if(frameCount%(width/speed)==0){
+    // reset screen when data fills the screen
+    if(currentFrame%(width/speed)==0){
       background(255);
       samples = [];
     }
 
     var peaks = findPeaks();
     samples.push(peaks);
-    
+
     for(var i=0; i<peaks.length; i++){
       var freq = peaks[i].freq;
       var energy = peaks[i].energy;
-      fill(255-energy);
-      ellipse(speed*frameCount%width, map(freq,0,22050/zoom,height,0),2,2);
+      fill(map(energy,-130,-30,255,0));
+      //ellipse(speed*currentFrame%width, map(freq,0,22050/zoom,height,0),2,2);
+      ellipse(speed*currentFrame%width, map(log(freq),log(30),log(22050/zoom),height,0),2,2);
     }
-
+    currentFrame++;
   }
   else {
     var peaks = samples[playbackIndex];
@@ -60,18 +63,24 @@ function draw()
 }
 
 function keyPressed(){
-  repeat = !repeat;
-  for(var i = 0; i < sinOscPool.length; i++){
-    sinOscPool[i].stop();
+  if(!recording){   // if we just clicked to stop playback and restart recording
+    background(255);
+    // reset all the synthesis stuff
+    samples = [];
+    playbackIndex = 0;
+    currentFrame = 0;
+    for(var i = 0; i < sinOscPool.length; i++){
+      sinOscPool[i].stop();
+    }
   }
+  recording = !recording;
 }
 //
 
 function findPeaks() {
   var peaks = [];
-  //background(200);
 
-  var spectrum = fft.analyze();
+  var spectrum = fft.analyze(1024,'db');
   // to find FFT peaks, we look for points where its derivative is zero and decreasing
   // i.e. the maxima
 
@@ -87,13 +96,13 @@ function findPeaks() {
     {
       // since we won't always have a data point at the zero crossing
       // we linearly interpolate to find where the derivative crosses zero
-      // i.e. we connect the neighboring values of the derivative with a straight line 
+      // i.e. we connect the neighboring values of the derivative with a straight line
       // and find where that line intersects zero
-      
+
       var secondDerivative = (point2[1]-point1[1])/(point2[0]-point1[0]);
       // linearly interpolating to find the frequency at which derivative is zero
       var freq = point1[0]-point1[1]*(point2[0]-point1[0])/(point2[1]-point1[1]);
-      
+
       // we filter the data by looking for points where second derivative is large
       // i.e. the derivative has a steep slope
       if(secondDerivative < -1*cutoff)
@@ -104,8 +113,8 @@ function findPeaks() {
         // i.e. draw a straight line between them, and find the energy at the peakFrequency
         var slope = spectrum[i+1]-spectrum[i];
         var peakEnergy = spectrum[i] + slope*(freq-i);
-        
-        if(peakEnergy>energyThreshold){
+
+        if(peakEnergy>=minDecibel){
           peaks.push({
             freq: freq * (nyquist / spectrum.length),
             energy: peakEnergy
@@ -136,8 +145,12 @@ function resynthesize(peaks) {
     var osc = sinOscPool[i];
     var freq = peaks[i].freq;
     var energy = peaks[i].energy;
+
     osc.freq(freq);
-    osc.amp(Math.min(energy / 255, 1.0));
+
+    var gain = map(Math.pow(10, (energy/20)),Math.pow(10, (minDecibel/20)),Math.pow(10, (maxDecibel/20)),0,1);
+    osc.amp(Math.min(gain, 1.0),0);
+
     if (!osc.started)
       osc.start();
   }
