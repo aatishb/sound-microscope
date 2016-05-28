@@ -46,7 +46,7 @@ function draw()
     var peaks = findPeaks();
     samples.push(peaks);
 
-    if (samples.length > 2) {
+    if (samples.length >= 2) {
       var prevPeaks = samples[samples.length - 2];
       peakMatchPartials(prevPeaks, peaks);
     }
