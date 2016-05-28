@@ -8,10 +8,10 @@
 
 var cutoff = 2;          // a filter on peak detection, smaller = more peaks, bigger = fewer
 var numFreqs = 20;       // number of peak frequencies to store (after sorting by amplitude)
-var speed = 2;           // sideways scroll speed
+var speed = 4;           // sideways scroll speed
 var zoom = 1;            // e.g. if 5, we display the bottom fifth of frequencies
 var volumeCutoff = -100; // peaks below this decibel level won't be stored
-var minFreq = 50;        // smallest frequency displayed on spectrogram (only for display, doesn't affect calculations) 
+var minFreq = 30;        // smallest frequency displayed on spectrogram (only for display, doesn't affect calculations) 
 
 var mic, fft;
 var recording = true;
@@ -20,6 +20,7 @@ var maxDecibel = -30;    // maximum decibel level (best not to change)
 
 function setup() {
    createCanvas(800,600);
+   strokeWeight(2);
    noStroke();
 
    mic = new p5.AudioIn();
@@ -64,11 +65,10 @@ function draw()
         speed*currentFrame%width,map(log(freq),log(minFreq),log(22050/zoom),height,0));
         noStroke();
       }
-      else {
-        fill(map(energy,-130,-30,255,0));
-        //ellipse(speed*currentFrame%width, map(freq,0,22050/zoom,height,0),2,2);
-        ellipse(speed*currentFrame%width, map(log(freq),log(minFreq),log(22050/zoom),height,0),2,2);
-      }
+      
+      fill(map(energy,-130,-30,255,0));
+      //ellipse(speed*currentFrame%width, map(freq,0,22050/zoom,height,0),2,2);
+      ellipse(speed*currentFrame%width, map(log(freq),log(minFreq),log(22050/zoom),height,0),4,4);
     }
 
     currentFrame++;
@@ -87,9 +87,6 @@ function keyPressed(){
     samples = [];
     playbackIndex = 0;
     currentFrame = 0;
-    for(var i = 0; i < sinOscPool.length; i++){
-      sinOscPool[i].stop();
-    }
   }
   recording = !recording;
 }
@@ -131,7 +128,8 @@ function findPeaks() {
             partial: {
               back: null,
               forward: null
-            }
+            },
+            osc: null
           });
         }
       }
@@ -146,32 +144,50 @@ function findPeaks() {
   return peaks;
 }
 
-//
-var sinOscPool = [];
+var fadeTime = 0.007;
+var rampTime = 0.007;
 
 function resynthesize(peaks) {
-  // make sure we have the right number of sin oscs
-  while (sinOscPool.length < peaks.length) {
-    sinOscPool.push(new p5.SinOsc());
-  }
-  // assign each peak to an oscillator
+  
   for(var i=0; i<peaks.length; i++){
-    var osc = sinOscPool[i];
+    
     var freq = peaks[i].freq;
     var energy = peaks[i].energy;
-
-    osc.freq(freq);
-
     var gain = map(Math.pow(10, (energy/20)),Math.pow(10, (minDecibel/20)),Math.pow(10, (maxDecibel/20)),0,1);
-    osc.amp(Math.min(gain, 1.0), 0);
 
-    if (!osc.started)
-      osc.start();
+    // if this partial begun earlier
+    if(peaks[i].partial.back !== null){
+
+      // pass the oscillator on to the current peak in the partial
+      peaks[i].osc = peaks[i].partial.back.osc;
+      peaks[i].partial.back.osc = null;
+
+      // if the partial is going to end, ramp it down
+      if(peaks[i].partial.forward == null){
+        peaks[i].osc.amp(0,rampTime);
+        peaks[i].osc.stop(rampTime);
+        peaks[i].osc = null; // can I do this
+      }
+
+      // else smoothly update its frequency and amplitude
+      else{
+      peaks[i].osc.freq(freq,fadeTime);
+      peaks[i].osc.amp(gain,fadeTime);
+      }
+    }
+
+    // if it's a new partial and it's going to last
+    if(peaks[i].osc == null && peaks[i].partial.forward !== null){ // can set a minimum partial length
+      // then create a sine osc
+      peaks[i].osc = new p5.SinOsc(freq);
+      peaks[i].osc.amp(gain,0); // if I put a fadeTime on this it sounds worse, don't know why
+      peaks[i].osc.start();
+    }
+
   }
-  for(var i = peaks.length; i < sinOscPool.length; i++){
-    sinOscPool[i].stop();
-  }
+
 }
+
 
 //
 var partial_midi_threshold = 1;
