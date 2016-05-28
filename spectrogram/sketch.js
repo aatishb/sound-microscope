@@ -185,13 +185,13 @@ function peakMatchPartials(prevPeaks, curPeaks) {
       var curPeak = curPeaks[j];
 
       // calculate distance between peaks
-      var dist = freqToMidi(Math.abs(prevPeak.freq - curPeak.freq));
+      var dist = Math.abs(freqToMidi(prevPeak.freq) - freqToMidi(curPeak.freq));
 
       // if distance is less than threshold, it's a candidate for matching
       if (dist < partial_midi_threshold) {
       // if the current peak already has a match with a previous peak
         var existing_distance = curPeak.partial.back ?
-          freqToMidi(Math.abs(curPeak.partial.back.freq - curPeak.freq)) :
+          Math.abs(freqToMidi(curPeak.partial.back.freq) - freqToMidi(curPeak.freq)) :
           partial_midi_threshold;
         // we compare the new match distance to the existing one
         if (dist < existing_distance) {
