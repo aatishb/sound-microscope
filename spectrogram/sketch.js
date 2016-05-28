@@ -10,11 +10,13 @@ var cutoff = 2;          // a filter on peak detection, smaller = more peaks, bi
 var numFreqs = 20;       // number of peak frequencies to store (after sorting by amplitude)
 var speed = 2;           // sideways scroll speed
 var zoom = 1;            // e.g. if 5, we display the bottom fifth of frequencies
-var minDecibel = -100;   // cutoff on minimum decibel level
-var maxDecibel = -30;    // cutoff on maximum decibel level
+var volumeCutoff = -100; // peaks below this decibel level won't be stored
+var minFreq = 50;        // smallest frequency displayed on spectrogram (only for display, doesn't affect calculations) 
 
 var mic, fft;
 var recording = true;
+var minDecibel = -100;   // minimum decibel level (best not to change)
+var maxDecibel = -30;    // maximum decibel level (best not to change)
 
 function setup() {
    createCanvas(800,600);
@@ -58,14 +60,14 @@ function draw()
       var back = peaks[i].partial.back;
       if (back) { // connect the dots of partial
         stroke(map(energy,-130,-30,255,0));
-        line(speed*(currentFrame-1)%width,map(log(back.freq),log(30),log(22050/zoom),height,0),
-        speed*currentFrame%width,map(log(freq),log(30),log(22050/zoom),height,0));
+        line(speed*(currentFrame-1)%width,map(log(back.freq),log(minFreq),log(22050/zoom),height,0),
+        speed*currentFrame%width,map(log(freq),log(minFreq),log(22050/zoom),height,0));
         noStroke();
       }
       else {
         fill(map(energy,-130,-30,255,0));
         //ellipse(speed*currentFrame%width, map(freq,0,22050/zoom,height,0),2,2);
-        ellipse(speed*currentFrame%width, map(log(freq),log(30),log(22050/zoom),height,0),2,2);
+        ellipse(speed*currentFrame%width, map(log(freq),log(minFreq),log(22050/zoom),height,0),2,2);
       }
     }
 
@@ -103,36 +105,28 @@ function findPeaks() {
 
   for (i = 1; i<spectrum.length; i++) {
 
-    // calculating the slope (i.e. the derivative) of the FFT
+    // calculating the slope of the FFT, i.e. the derivative
     var point1 = [i, spectrum[i+1]-spectrum[i-1]];
     var point2 = [(i+1), spectrum[i+2]-spectrum[i]];
 
-    // we're looking for when the derivative goes from positive to negative
+    // look for when the derivative goes from positive to negative
+    // since this occurs at the peaks of the FFT
     if(point1[1]>=0 && point2[1]<0)
     {
-      // since we won't always have a data point at the zero crossing
-      // we linearly interpolate to find where the derivative crosses zero
-      // i.e. we connect the neighboring values of the derivative with a straight line
-      // and find where that line intersects zero
-
+      // linearly interpolate to find where the derivative crosses zero
       var secondDerivative = (point2[1]-point1[1])/(point2[0]-point1[0]);
-      // linearly interpolating to find the frequency at which derivative is zero
-      var freq = point1[0]-point1[1]*(point2[0]-point1[0])/(point2[1]-point1[1]);
+      var peakFrequency = point1[0]-point1[1]*(point2[0]-point1[0])/(point2[1]-point1[1]);
 
-      // we filter the data by looking for points where second derivative is large
-      // i.e. the derivative has a steep slope
+      //filter by looking for points where second derivative is large
       if(secondDerivative < -1*cutoff)
       {
-        // now we find the peakEnergy
-        // once again, we won't always have data exactly at the peak
-        // so we linearly interpolate the nearest points on the FFT
-        // i.e. draw a straight line between them, and find the energy at the peakFrequency
+        // linearly interpolate the the FFT at peakFrequency to find peakEnergy
         var slope = spectrum[i+1]-spectrum[i];
-        var peakEnergy = spectrum[i] + slope*(freq-i);
+        var peakEnergy = spectrum[i] + slope*(peakFrequency-i);
 
-        if(peakEnergy>=minDecibel){
+        if(peakEnergy>=volumeCutoff){
           peaks.push({
-            freq: freq * (nyquist / spectrum.length),
+            freq: peakFrequency * (nyquist / spectrum.length),
             energy: peakEnergy,
             partial: {
               back: null,
@@ -182,20 +176,29 @@ function resynthesize(peaks) {
 //
 var partial_midi_threshold = 1;
 
+// Partial tracking using implementation in http://www.klingbeil.com/data/Klingbeil_Dissertation_web.pdf
+// See section 2.4.2
 function peakMatchPartials(prevPeaks, curPeaks) {
   for (var i = 0; i < prevPeaks.length; i++) {
     var prevPeak = prevPeaks[i];
     for (var j = 0; j < curPeaks.length; j++) {
       var curPeak = curPeaks[j];
-      //
+
+      // calculate distance between peaks
       var dist = freqToMidi(Math.abs(prevPeak.freq - curPeak.freq));
+
+      // if distance is less than threshold, it's a candidate for matching
       if (dist < partial_midi_threshold) {
+      // if the current peak already has a match with a previous peak
         var existing_distance = curPeak.partial.back ?
           freqToMidi(Math.abs(curPeak.partial.back.freq - curPeak.freq)) :
           partial_midi_threshold;
+        // we compare the new match distance to the existing one
         if (dist < existing_distance) {
+          // if it's smaller, then end the previous match
           if (curPeak.partial.back)
             curPeak.partial.back.forward = null;
+          // and create a new match between this peak and the one under consideration
           curPeak.partial.back = prevPeak;
           prevPeak.partial.forward = curPeak;
         }
