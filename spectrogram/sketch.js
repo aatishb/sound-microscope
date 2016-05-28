@@ -71,6 +71,9 @@ function draw()
       }
     }
 
+    // stroke(220);
+    // line(speed*currentFrame%width, 0, speed*currentFrame%width, height);
+
     currentFrame++;
   }
   else {
@@ -174,7 +177,7 @@ function resynthesize(peaks) {
 }
 
 //
-var partial_midi_threshold = 1;
+var partial_midi_threshold = 1.25;
 
 // Partial tracking using implementation in http://www.klingbeil.com/data/Klingbeil_Dissertation_web.pdf
 // See section 2.4.2
@@ -185,19 +188,23 @@ function peakMatchPartials(prevPeaks, curPeaks) {
       var curPeak = curPeaks[j];
 
       // calculate distance between peaks
-      var dist = Math.abs(freqToMidi(prevPeak.freq) - freqToMidi(curPeak.freq));
+      var dist = Math.abs(freqToMidiFloat(prevPeak.freq) - freqToMidiFloat(curPeak.freq));
 
       // if distance is less than threshold, it's a candidate for matching
       if (dist < partial_midi_threshold) {
       // if the current peak already has a match with a previous peak
         var existing_distance = curPeak.partial.back ?
-          Math.abs(freqToMidi(curPeak.partial.back.freq) - freqToMidi(curPeak.freq)) :
+          Math.abs(freqToMidiFloat(curPeak.partial.back.freq) - freqToMidiFloat(curPeak.freq)) :
           partial_midi_threshold;
         // we compare the new match distance to the existing one
         if (dist < existing_distance) {
           // if it's smaller, then end the previous match
-          if (curPeak.partial.back)
-            curPeak.partial.back.forward = null;
+          if (curPeak.partial.back) {
+            curPeak.partial.back.partial.forward = null;
+          }
+          if (prevPeak.partial.forward) {
+            prevPeak.partial.forward.partial.back = null;
+          }
           // and create a new match between this peak and the one under consideration
           curPeak.partial.back = prevPeak;
           prevPeak.partial.forward = curPeak;
@@ -206,3 +213,9 @@ function peakMatchPartials(prevPeaks, curPeaks) {
     }
   }
 }
+
+function freqToMidiFloat(f) {
+  var mathlog2 = Math.log(f / 440) / Math.log(2);
+  var m = 12 * mathlog2 + 57;
+  return m;
+};
