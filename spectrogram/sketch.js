@@ -46,13 +46,29 @@ function draw()
     var peaks = findPeaks();
     samples.push(peaks);
 
+    if (samples.length >= 2) {
+      var prevPeaks = samples[samples.length - 2];
+      peakMatchPartials(prevPeaks, peaks);
+    }
+
     for(var i=0; i<peaks.length; i++){
       var freq = peaks[i].freq;
       var energy = peaks[i].energy;
-      fill(map(energy,-130,-30,255,0));
-      //ellipse(speed*currentFrame%width, map(freq,0,22050/zoom,height,0),2,2);
-      ellipse(speed*currentFrame%width, map(log(freq),log(30),log(22050/zoom),height,0),2,2);
+      
+      var back = peaks[i].partial.back;
+      if (back) { // connect the dots of partial
+        stroke(map(energy,-130,-30,255,0));
+        line(speed*(currentFrame-1)%width,map(log(back.freq),log(30),log(22050/zoom),height,0),
+        speed*currentFrame%width,map(log(freq),log(30),log(22050/zoom),height,0));
+        noStroke();
+      }
+      else {
+        fill(map(energy,-130,-30,255,0));
+        //ellipse(speed*currentFrame%width, map(freq,0,22050/zoom,height,0),2,2);
+        ellipse(speed*currentFrame%width, map(log(freq),log(30),log(22050/zoom),height,0),2,2);
+      }
     }
+
     currentFrame++;
   }
   else {
@@ -117,7 +133,11 @@ function findPeaks() {
         if(peakEnergy>=minDecibel){
           peaks.push({
             freq: freq * (nyquist / spectrum.length),
-            energy: peakEnergy
+            energy: peakEnergy,
+            partial: {
+              back: null,
+              forward: null
+            }
           });
         }
       }
@@ -149,12 +169,37 @@ function resynthesize(peaks) {
     osc.freq(freq);
 
     var gain = map(Math.pow(10, (energy/20)),Math.pow(10, (minDecibel/20)),Math.pow(10, (maxDecibel/20)),0,1);
-    osc.amp(Math.min(gain, 1.0),0);
+    osc.amp(Math.min(gain, 1.0), 0);
 
     if (!osc.started)
       osc.start();
   }
   for(var i = peaks.length; i < sinOscPool.length; i++){
     sinOscPool[i].stop();
+  }
+}
+
+//
+var partial_midi_threshold = 1;
+
+function peakMatchPartials(prevPeaks, curPeaks) {
+  for (var i = 0; i < prevPeaks.length; i++) {
+    var prevPeak = prevPeaks[i];
+    for (var j = 0; j < curPeaks.length; j++) {
+      var curPeak = curPeaks[j];
+      //
+      var dist = freqToMidi(Math.abs(prevPeak.freq - curPeak.freq));
+      if (dist < partial_midi_threshold) {
+        var existing_distance = curPeak.partial.back ?
+          freqToMidi(Math.abs(curPeak.partial.back.freq - curPeak.freq)) :
+          partial_midi_threshold;
+        if (dist < existing_distance) {
+          if (curPeak.partial.back)
+            curPeak.partial.back.forward = null;
+          curPeak.partial.back = prevPeak;
+          prevPeak.partial.forward = curPeak;
+        }
+      }
+    }
   }
 }
