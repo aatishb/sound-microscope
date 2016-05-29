@@ -48,11 +48,12 @@ function draw()
     var peaks = findPeaks();
     samples.push(peaks);
 
-    if (samples.length >= 2) {
-      var prevPeaks = samples[samples.length - 2];
-      peakMatchPartials(prevPeaks, peaks);
-    }
+    var prevPeaks = samples.length >= 2 ?
+      samples[samples.length - 2] :
+      [];
+    peakMatchPartials(prevPeaks, peaks);
 
+    // draw
     for(var i=0; i<peaks.length; i++){
       var freq = peaks[i].freq;
       var energy = peaks[i].energy;
@@ -90,9 +91,10 @@ function keyPressed(){
     samples = [];
     playbackIndex = 0;
     currentFrame = 0;
-    for(var i = 0; i < sinOscPool.length; i++){
-      sinOscPool[i].stop();
+    for (var i in sinOscTable) {
+      sinOscTable[i].stop();
     }
+    sinOscTable = {};
   }
   recording = !recording;
 }
@@ -106,7 +108,7 @@ function findPeaks() {
   // i.e. the maxima
 
 
-  for (i = 1; i<spectrum.length; i++) {
+  for (var i = 1; i<spectrum.length; i++) {
 
     // calculating the slope of the FFT, i.e. the derivative
     var point1 = [i, spectrum[i+1]-spectrum[i-1]];
@@ -150,34 +152,51 @@ function findPeaks() {
 }
 
 //
-var sinOscPool = [];
+var sinOscTable = {};
+var nextPartialID = 1;
+var rampTime = 0.007;
 
 function resynthesize(peaks) {
-  // make sure we have the right number of sin oscs
-  while (sinOscPool.length < peaks.length) {
-    sinOscPool.push(new p5.SinOsc());
-  }
-  // assign each peak to an oscillator
+  // play current peaks
   for(var i=0; i<peaks.length; i++){
-    var osc = sinOscPool[i];
     var freq = peaks[i].freq;
     var energy = peaks[i].energy;
-
-    osc.freq(freq);
-
     var gain = map(Math.pow(10, (energy/20)),Math.pow(10, (minDecibel/20)),Math.pow(10, (maxDecibel/20)),0,1);
-    osc.amp(Math.min(gain, 1.0), 0);
+    gain = Math.min(gain, 1.0);
 
-    if (!osc.started)
-      osc.start();
-  }
-  for(var i = peaks.length; i < sinOscPool.length; i++){
-    sinOscPool[i].stop();
+    var partialID = peaks[i].partial.id;
+    if (!sinOscTable[partialID]) {
+      sinOscTable[partialID] = new p5.SinOsc(freq);
+      sinOscTable[partialID].amp(gain);
+    }
+    else {
+      var osc = sinOscTable[partialID];
+      if (!peaks[i].partial.back) {
+        // entering partial
+        osc.freq(freq);
+        osc.amp(gain);
+      }
+      else {
+        // transition partial
+        osc.freq(freq, rampTime);
+        osc.amp(gain, rampTime);
+      }
+    }
+
+    if (!sinOscTable[partialID].started) {
+      sinOscTable[partialID].start();
+    }
+
+    if (!peaks[i].partial.forward) {
+      // exiting partial
+      if (sinOscTable[peaks[i].partial.id])
+        sinOscTable[peaks[i].partial.id].stop();
+    }
   }
 }
 
 //
-var partial_midi_threshold = 1.25;
+var partial_midi_threshold = 1;
 
 // Partial tracking using implementation in http://www.klingbeil.com/data/Klingbeil_Dissertation_web.pdf
 // See section 2.4.2
@@ -208,8 +227,16 @@ function peakMatchPartials(prevPeaks, curPeaks) {
           // and create a new match between this peak and the one under consideration
           curPeak.partial.back = prevPeak;
           prevPeak.partial.forward = curPeak;
+          curPeak.partial.id = prevPeak.partial.id;
         }
       }
+    }
+  }
+  // assign an ID to each entering partial
+  for(var i=0; i<curPeaks.length; i++){
+    if (!curPeaks[i].partial.back) {
+      curPeaks[i].partial.id = nextPartialID.toString();
+      nextPartialID++;
     }
   }
 }
