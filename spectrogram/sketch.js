@@ -167,30 +167,23 @@ function resynthesize(peaks) {
     var partialID = peaks[i].partial.id;
     if (!sinOscTable[partialID]) {
       sinOscTable[partialID] = new p5.SinOsc(freq);
-      sinOscTable[partialID].amp(gain);
+      sinOscTable[partialID].amp(0);
+      sinOscTable[partialID].start(rampTime);
     }
     else {
       var osc = sinOscTable[partialID];
-      if (!peaks[i].partial.back) {
-        // entering partial
-        osc.freq(freq);
-        osc.amp(gain);
+      if (!osc.started) {
+        osc.start();
       }
-      else {
-        // transition partial
-        osc.freq(freq, rampTime);
-        osc.amp(gain, rampTime);
-      }
-    }
-
-    if (!sinOscTable[partialID].started) {
-      sinOscTable[partialID].start();
+      osc.freq(freq, rampTime);
+      osc.amp(gain, rampTime);
     }
 
     if (!peaks[i].partial.forward) {
       // exiting partial
       if (sinOscTable[peaks[i].partial.id])
-        sinOscTable[peaks[i].partial.id].stop();
+        sinOscTable[partialID].amp(0, rampTime);
+        sinOscTable[peaks[i].partial.id].stop(2*rampTime);
     }
   }
 }
