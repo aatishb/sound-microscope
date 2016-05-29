@@ -7,7 +7,7 @@
  */
 
 var cutoff = 2;          // a filter on peak detection, smaller = more peaks, bigger = fewer
-var numFreqs = 1;       // number of peak frequencies to store (after sorting by amplitude)
+var numFreqs = 20;       // number of peak frequencies to store (after sorting by amplitude)
 var speed = 2;           // sideways scroll speed
 var zoom = 1;            // e.g. if 5, we display the bottom fifth of frequencies
 var volumeCutoff = -100; // peaks below this decibel level won't be stored
@@ -168,24 +168,15 @@ function resynthesize(peaks) {
     if (!sinOscTable[partialID]) {
       sinOscTable[partialID] = new p5.SinOsc(freq);
       sinOscTable[partialID].amp(0);
+      sinOscTable[partialID].start(rampTime);
     }
     else {
       var osc = sinOscTable[partialID];
-      if (!peaks[i].partial.back) {
-        // entering partial
-        osc.freq(freq);
-        osc.amp(gain);
+      if (!osc.started) {
+        osc.start();
       }
-      else {
-        // transition partial
-        osc.freq(freq, rampTime);
-        osc.amp(gain, rampTime);
-      }
-    }
-
-    if (!sinOscTable[partialID].started) {
-      sinOscTable[partialID].start();
-      sinOscTable[partialID].amp(gain, rampTime);
+      osc.freq(freq, rampTime);
+      osc.amp(gain, rampTime);
     }
 
     if (!peaks[i].partial.forward) {
